@@ -11,7 +11,7 @@ from datasets.DenoisingDatasets_unpair import BenchmarkTrain
 from datasets.DenoisingDatasets import SIDD_VAL
 import torch.nn as nn
 import time
-
+from lossfunction import CharbonnierLoss
 np.random.seed(1234)
 torch.manual_seed(1234)
 torch.cuda.manual_seed_all(1234)
@@ -98,7 +98,8 @@ def train(config):
     # lossfunc_fake = BasicLoss_fake().cuda()
     # loss_diss = nn.BCELoss()
     # loss_fourier = FourierLoss().cuda()
-    lossMSE = nn.MSELoss(reduction='mean')
+    # lossMSE = nn.MSELoss(reduction='mean')
+    lossCha = CharbonnierLoss()
     # Load model
     net = NoiseNetwork(out_channels=4).to(device)
     # model_dis = DiscriminatorLinear(in_chn=4).to(device)
@@ -167,12 +168,12 @@ def train(config):
                 output_red = net(input_red)
                 output_blue = net(input_blue)
                 # with torch.no_grad():
-                im_full = net(im_noisy)
+                noise_full = net(im_noisy)
 
 
                 noise_red = torch.clamp(output_red, -1, 1)
                 noise_blue = torch.clamp(output_blue, -1, 1)
-                im_restore_noise = torch.clamp(im_full, -1, 1)
+                im_restore_noise = torch.clamp(noise_full, -1, 1)
 
                 denoise_red = input_red - noise_red
                 denoise_blue = input_blue - noise_blue
@@ -181,12 +182,12 @@ def train(config):
                 # print(im_gt.size())
                 # print(im_restore_noise.size())
                 img_noise2 = im_gt2 + im_restore_noise
-                im_full2 = net(img_noise2)
-
+                noise_full2 = net(img_noise2)
+                im_full2 = img_noise2 - noise_full2
                 # loss = lossfunc(im_n
                 # oisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)+ 0.0005*loss_
                 loss = lossfunc(im_noisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)
-                loss += min(1.0,float(epoch)*1.0/30.0)*lossMSE(im_full2,im_gt2)
+                loss += min(1.0,float(epoch)*1.0/30.0)*lossCha(im_full2,im_gt2)
                 optimizer.zero_grad()
                 loss.backward()
                 # save_img(im_noisy, im_gt, output_red, im_restore, mse_img, r1, r2, global_step)
