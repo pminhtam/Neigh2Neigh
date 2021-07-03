@@ -7,7 +7,7 @@ from torch.utils import data
 
 from ssdn.network import NoiseNetwork
 from lossfunction_dual import *
-from datasets.DenoisingDatasets_unpair import BenchmarkTrain
+from datasets.DenoisingDatasets_unpair_cityscapes import BenchmarkTrain
 from datasets.DenoisingDatasets import SIDD_VAL
 import torch.nn as nn
 import time
@@ -76,23 +76,24 @@ def train(config):
 
     batch_size = config.batch_size
     epochs = config.epochs
-    data_dir = config.data_dir
+    noise_dir = config.noise_dir
+    gt_dir = config.gt_dir
     num_workers = config.num_workers
     N = config.N
 
     # Load dataset
-    train_dataset = BenchmarkTrain(data_dir, N * batch_size, pch_size=256)
+    train_dataset = BenchmarkTrain(noise_dir,gt_dir, N * batch_size, pch_size=256)
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True,
         num_workers=num_workers, pin_memory=True, drop_last=True)
 
     # val_dataset = SIDD_VAL('../validation/RAW/')
-    val_dataset = SIDD_VAL('/vinai/tampm2/SIDD')
+    # val_dataset = SIDD_VAL('/vinai/tampm2/SIDD')
 
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True)
+    # val_loader = torch.utils.data.DataLoader(
+    #     val_dataset, batch_size=batch_size, shuffle=True,
+    #     num_workers=num_workers, pin_memory=True)
 
     lossfunc = BasicLoss().cuda()
     # lossfunc_fake = BasicLoss_fake().cuda()
@@ -100,7 +101,7 @@ def train(config):
     # loss_fourier = FourierLoss().cuda()
     lossMSE = nn.MSELoss(reduction='mean')
     # Load model
-    net = NoiseNetwork(out_channels=4).to(device)
+    net = NoiseNetwork(in_channels=3,out_channels=3).to(device)
     # model_dis = DiscriminatorLinear(in_chn=4).to(device)
 
     # Optimization
@@ -130,20 +131,20 @@ def train(config):
         global_step = checkpoint['global_step']
         print('Loaded pretrained model sucessfully.')
 
-    with torch.no_grad():
-        psnr = []
-        for ii, data in enumerate(val_loader):
-            im_noisy = data[0].to(device)
-            im_gt = data[1].to(device)
-
-            out = net(im_noisy)
-            noise = torch.clamp(out, -1, 1)
-            restored_2 = torch.clamp(im_noisy - noise, 0, 1)
-            restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
-            im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
-
-            psnr.extend([peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
-        print('psnr={:.4e}'.format(np.mean(psnr)))
+    # with torch.no_grad():
+    #     psnr = []
+        # for ii, data in enumerate(val_loader):
+        #     im_noisy = data[0].to(device)
+        #     im_gt = data[1].to(device)
+        #
+        #     out = net(im_noisy)
+        #     noise = torch.clamp(out, -1, 1)
+        #     restored_2 = torch.clamp(im_noisy - noise, 0, 1)
+        #     restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
+        #     im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
+        #
+        #     psnr.extend([peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
+        # print('psnr={:.4e}'.format(np.mean(psnr)))
 
     for epoch in range(cur_epoch, epochs):
         # ----------------------------------------------------
@@ -152,8 +153,10 @@ def train(config):
         loss_per_epoch = {x: [] for x in ['loss',"dis"]}
         lr = scheduler.get_last_lr()[0]
         tic = time.time()
+        # print("===================================bat dau ======================")
         for ii, data in enumerate(train_loader):
             global_step += 1
+            # print("==================   ", global_step)
             im_noisy = data[0].to(device)
             im_gt = data[1].to(device)
 
@@ -163,6 +166,7 @@ def train(config):
 
             for _ in range(1):
                 net.train()
+                # print("===================== train ======================")
                 # Inference
                 output_red = net(input_red)
                 output_blue = net(input_blue)
@@ -177,20 +181,20 @@ def train(config):
                 denoise_red = input_red - noise_red
                 denoise_blue = input_blue - noise_blue
                 im_restore = im_noisy - im_restore_noise
-                # print(im_gt2.size())
-                # print(im_gt.size())
+                # print("=================182   ",im_gt2.size())
+                # print("====================183 ============",im_gt.size())
                 # print(im_restore_noise.size())
                 img_noise2 = im_gt2 + im_restore_noise
                 im_full2 = net(img_noise2)
 
-                # loss = lossfunc(im_n
-                # oisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)+ 0.0005*loss_
+                # loss = lossfunc(im_noisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)+ 0.0005*loss_
                 loss = lossfunc(im_noisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)
-                loss += min(1.0,float(epoch)*1.0/30.0)*lossMSE(im_full2,im_gt2)
+                loss += 0.0*lossMSE(im_full2,im_gt2)
                 optimizer.zero_grad()
                 loss.backward()
                 # save_img(im_noisy, im_gt, output_red, im_restore, mse_img, r1, r2, global_step)
                 optimizer.step()
+                # print(loss)
             loss_per_epoch['loss'].append(loss.item())
             # loss_per_epoch['dis'].append(loss_.item())
             # loss_per_epoch['dis'].append(0)
@@ -222,18 +226,18 @@ def train(config):
                 with torch.no_grad():
                     psnr = []
                     psnr2 = []
-                    for ii, data in enumerate(val_loader):
-                        im_noisy = data[0].to(device)
-                        im_gt = data[1].to(device)
-                        out = net(im_noisy)
-                        noise = torch.clamp(out, -1, 1)
-                        restored_2 = torch.clamp(im_noisy - noise,0,1)
-                        restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
-                        im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
-
-                        psnr2.extend(
-                            [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
-                    print(' ,  psnr2={:.4e}  '.format(np.mean(psnr2)))
+                    # for ii, data in enumerate(val_loader):
+                    #     im_noisy = data[0].to(device)
+                    #     im_gt = data[1].to(device)
+                    #     out = net(im_noisy)
+                    #     noise = torch.clamp(out, -1, 1)
+                    #     restored_2 = torch.clamp(im_noisy - noise,0,1)
+                    #     restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
+                    #     im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
+                    #
+                    #     psnr2.extend(
+                    #         [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
+                    # print(' ,  psnr2={:.4e}  '.format(np.mean(psnr2)))
         # --------------------------------------------------------------
         ###############################################################
         # --------------------------------------------------------------
@@ -256,30 +260,30 @@ def train(config):
                 save_path_model)
         toc = time.time()
 
-        if (epoch + 1) % 1 == 0:
-            with torch.no_grad():
-                psnr = []
-                psnr2 = []
-                for ii, data in enumerate(val_loader):
-                    im_noisy = data[0].to(device)
-                    im_gt = data[1].to(device)
-                    out = net(im_noisy)
-                    noise = torch.clamp(out, -1, 1)
-                    restored_2 = torch.clamp(im_noisy - noise, 0, 1)
-                    restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
-                    im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
-
-                    psnr2.extend(
-                        [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
-                print('psnr={:.4e}  ,  psnr2={:.4e}  '.format(np.mean(psnr),np.mean(psnr2)))
+        # if (epoch + 1) % 1 == 0:
+        #     with torch.no_grad():
+        #         psnr = []
+        #         psnr2 = []
+                # for ii, data in enumerate(val_loader):
+                #     im_noisy = data[0].to(device)
+                #     im_gt = data[1].to(device)
+                #     out = net(im_noisy)
+                #     noise = torch.clamp(out, -1, 1)
+                #     restored_2 = torch.clamp(im_noisy - noise, 0, 1)
+                #     restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
+                #     im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
+                #
+                #     psnr2.extend(
+                #         [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
+                # print('psnr={:.4e}  ,  psnr2={:.4e}  '.format(np.mean(psnr),np.mean(psnr2)))
         print('This epoch take time {:.2f}'.format(toc - tic))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu_id", type=int, default=1)
-    parser.add_argument('--data_dir', type=str,
-                        default="../crop_medium")
+    parser.add_argument('--noise_dir', '-n', default='/home/dell/Downloads/noise', help='path to noise folder image')
+    parser.add_argument('--gt_dir', '-g', default='/home/dell/Downloads/gt', help='path to gt folder image')
 
     parser.add_argument('--num_workers', type=int, default=16)
     # parser.add_argument('--pretrain_model', type=str, default='img_dual_345_gan_denoise_fake/model_18.pth')

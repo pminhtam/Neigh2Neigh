@@ -9,18 +9,18 @@ class BasicLoss(nn.Module):
 
     def forward(self,im_noisy,im_restore,im_restore_noise, input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue):
 
-        mse = torch.abs(denoise_red - denoise_blue)**2 # 1
-        # mse =  mse_img**2
-        mse_all =  (im_noisy - im_restore)**2  # 2
+        # mse = torch.abs(denoise_red - denoise_blue)**2 # 1
+        # # mse =  mse_img**2
+        # mse_all =  (im_noisy - im_restore)**2  # 2
 
         # r1 = torch.abs(out_red - in_blue)
         mse_red =  (input_red - denoise_blue)**2 #3
         mse_blue =  (input_blue - denoise_red)**2
 
-        r_red =  (input_red - (noise_red + denoise_red))**2  # 4
-        r_blue =  (input_blue - noise_blue - denoise_blue)**2
-        # print(im_restore_noise.size())
-        mse_all_noise =  (im_noisy - im_restore - im_restore_noise)**2  # 5
+        # r_red =  (input_red - (noise_red + denoise_red))**2  # 4
+        # r_blue =  (input_blue - noise_blue - denoise_blue)**2
+        # # print(im_restore_noise.size())
+        # mse_all_noise =  (im_noisy - im_restore - im_restore_noise)**2  # 5
 
         alpha = 0.5
         beta = 0.1
@@ -35,9 +35,9 @@ class BasicLoss(nn.Module):
 
         # return torch.mean(r_red + r_blue)  # 4 # 27.8
         # return torch.mean(mse)  # 1  # 20
-        # return torch.mean(mse_red + mse_blue)  # 3_not_change_role  # 37.3
+        return torch.mean(mse_red + mse_blue)  # 3_not_change_role  # 37.3
         # return torch.mean(mse_red + mse_blue+ r_red + r_blue)  # 34_gan # 49.9
-        return torch.mean(mse_red + mse_blue+ r_red + r_blue) + torch.mean(mse_all_noise)  # 345_gan   # 49.9
+        # return torch.mean(mse_red + mse_blue+ r_red + r_blue) + torch.mean(mse_all_noise)  # 345_gan   # 49.9
         # return 0.5*torch.mean(mse + alpha*(r_red + r_blue)) + torch.mean(mse_all)
         # return torch.mean(mse_all_noise) + torch.mean(mse_all) # 15
 
