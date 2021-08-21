@@ -8,7 +8,7 @@ import random
 import scipy.io as sio
 import os
 import numpy as np
-import cv2
+# import cv2
 from .data_tools import random_augmentation
 from . import BaseDataSetH5
 ## Use unpair clean to denoise

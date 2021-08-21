@@ -2,7 +2,7 @@
 # -*- coding:utf-8 -*-
 # Power by Zongsheng Yue 2019-09-02 15:11:05
 
-import cv2
+# import cv2
 import numpy as np
 import random
 

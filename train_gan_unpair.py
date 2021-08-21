@@ -16,50 +16,38 @@ np.random.seed(1234)
 torch.manual_seed(1234)
 torch.cuda.manual_seed_all(1234)
 
-import cv2
+# import cv2
 from skimage.metrics import peak_signal_noise_ratio
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 import matplotlib.pyplot as plt
-def save_img(im_noisy,im_gt,denoise_red, noise_red, denoise_blue, noise_blue,im_restore,global_step):
+def save_img(im_noisy,noise_red,noise_blue,noise,noise_full2,global_step):
     im_noisy = np.int8(np.transpose(im_noisy.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
-    im_gt = np.int8(np.transpose(im_gt.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
-    im_restore = np.int8(np.transpose(im_restore.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
-    denoise_red = np.int8(np.transpose(denoise_red.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
+    noise_red = np.int8(np.transpose(noise_red.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
+    noise_blue = np.int8(np.transpose(noise_blue.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
+    noise = np.int8(np.transpose(noise.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
+    noise_full2 = np.int8(np.transpose(noise_full2.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
     # denoise_red = (denoise_red - np.min(denoise_red)) / (np.max(denoise_red) - np.min(denoise_red))
 
-    noise_red = np.int8(np.transpose(noise_red.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
-    # noise_red = (noise_red - np.min(noise_red)) / (np.max(noise_red) - np.min(noise_red))
 
-    denoise_blue = np.int8(np.transpose(denoise_blue.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
-    # denoise_blue = (denoise_blue - np.min(denoise_blue)) / (np.max(denoise_blue) - np.min(denoise_blue))
-
-    noise_blue = np.int8(np.transpose(noise_blue.cpu().detach().numpy(), [0, 2, 3, 1])[0,:,:,0]*255)
-    # noise_blue = (noise_blue - np.min(noise_blue)) / (np.max(noise_blue) - np.min(noise_blue))
-    # mse_img = (mse_img - np.min(mse_img)) / (np.max(mse_img) - np.min(mse_img))
-    # scale = 0.05
-    # print(im_noisy)
     fig, axs = plt.subplots(3,3,figsize=(20,20))
-    axs[0,0].imshow(im_restore,cmap='gray')
-    axs[0,0].set_title("im_restore")
-    axs[0,2].imshow(im_noisy,cmap='gray')
-    axs[0,2].set_title("im_noisy")
-    axs[1,0].imshow(im_gt,cmap='gray')
-    axs[1,0].set_title("im_gt")
-    axs[2,0].imshow(denoise_red,cmap='gray')
-    axs[2,0].set_title("denoise_red")
-    axs[2,1].imshow(noise_red,cmap='jet')
-    axs[2,1].set_title("noise_red")
-    axs[0,1].imshow(denoise_blue,cmap='gray')
-    axs[0,1].set_title("denoise_blue")
-    axs[1,1].imshow(noise_blue,cmap='jet')
-    axs[1,1].set_title("noise_blue")
+    axs[0,0].imshow(im_noisy,cmap='gray')
+    axs[0,0].set_title("im_noisy")
+    axs[0,2].imshow(noise_red,cmap='gray')
+    axs[0,2].set_title("noise_red")
+    axs[1,0].imshow(noise_blue,cmap='gray')
+    axs[1,0].set_title("noise_blue")
+    axs[2,0].imshow(noise,cmap='gray')
+    axs[2,0].set_title("noise")
+    axs[2,1].imshow(noise_full2,cmap='jet')
+    axs[2,1].set_title("noise_full2")
+
     plt.axis("off")
     fig.suptitle(str(global_step)+ " : ",fontsize=50)
 
     # plt.imshow(im_noisy,cmap='gray')
     # plt.show()
-    folder = "img_gan_unpair2/"
+    folder = "img_gan_unpair_dynamic_zero/"
     if not os.path.isdir(folder):
         os.mkdir(folder)
     plt.savefig(folder+str(global_step)+".png")
@@ -136,14 +124,15 @@ def train(config):
         for ii, data in enumerate(val_loader):
             im_noisy = data[0].to(device)
             im_gt = data[1].to(device)
+            # print(im_gt.size())
 
             out = net(im_noisy)
             noise = torch.clamp(out, -1, 1)
             restored_2 = torch.clamp(im_noisy - noise, 0, 1)
             restored_2 = np.transpose(restored_2.cpu().numpy(), [0, 2, 3, 1])
             im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
-
-            psnr.extend([peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
+            # print(im_gt.shape)
+            psnr.extend([peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(im_gt.shape[0])])
         print('psnr={:.4e}'.format(np.mean(psnr)))
 
     for epoch in range(cur_epoch, epochs):
@@ -169,11 +158,14 @@ def train(config):
                 output_blue = net(input_blue)
                 # with torch.no_grad():
                 noise_full = net(im_noisy)
+                # print(noise_full)
 
-
-                noise_red = torch.clamp(output_red, -1, 1)
-                noise_blue = torch.clamp(output_blue, -1, 1)
-                im_restore_noise = torch.clamp(noise_full, -1, 1)
+                # noise_red = torch.clamp(output_red, -1, 1)
+                noise_red = output_red
+                # noise_blue = torch.clamp(output_blue, -1, 1)
+                noise_blue = output_blue
+                # im_restore_noise = torch.clamp(noise_full, -1, 1)
+                im_restore_noise = noise_full
 
                 denoise_red = input_red - noise_red
                 denoise_blue = input_blue - noise_blue
@@ -181,13 +173,19 @@ def train(config):
                 # print(im_gt2.size())
                 # print(im_gt.size())
                 # print(im_restore_noise.size())
+                noise_clean2 = net(im_gt2)
+                """
                 img_noise2 = im_gt2 + im_restore_noise
                 noise_full2 = net(img_noise2)
+                # print(noise_full2)
+                # noise_full2 = torch.clamp(noise_full2, -1, 1)
                 im_full2 = img_noise2 - noise_full2
-                # loss = lossfunc(im_n
-                # oisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)+ 0.0005*loss_
+                """
+                # loss = lossfunc(im_noisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)+ 0.0005*loss_
                 loss = lossfunc(im_noisy,im_restore,im_restore_noise,input_red, denoise_red, noise_red, input_blue, denoise_blue, noise_blue)
-                loss += min(1.0,float(epoch)*1.0/30.0)*lossCha(im_full2,im_gt2)
+                # loss += min(1.0,float(epoch)*1.0/20.0)*lossCha(im_full2,im_gt2)
+                # loss += min(0.1,float(epoch)*1.0/50.0)*lossCha(im_full2,im_gt2)     # 42  img_gan_unpair_dynamic_char
+                loss += min(1.0, float(epoch) * 1.0 / 50.0) * lossCha(noise_clean2, torch.zeros_like(noise_clean2))     # img_gan_unpair_dynamic_zero
                 optimizer.zero_grad()
                 loss.backward()
                 # save_img(im_noisy, im_gt, output_red, im_restore, mse_img, r1, r2, global_step)
@@ -213,10 +211,10 @@ def train(config):
                     im_noisy_np = np.transpose(im_noisy.cpu().numpy(), [0, 2, 3, 1])
 
                     psnr_ori = np.mean(
-                        [peak_signal_noise_ratio(im_noisy_np[i], im_gt_np[i], data_range=1) for i in range(batch_size)])
+                        [peak_signal_noise_ratio(im_noisy_np[i], im_gt_np[i], data_range=1) for i in range(im_gt_np.shape[0])])
                     psnr2 = np.mean(
-                        [peak_signal_noise_ratio(restored_2[i], im_gt_np[i], data_range=1) for i in range(batch_size)])
-                    # save_img(im_noisy,im_gt,denoise_red, noise_red, denoise_blue, noise_blue,im_restore,global_step)
+                        [peak_signal_noise_ratio(restored_2[i], im_gt_np[i], data_range=1) for i in range(im_gt_np.shape[0])])
+                    # save_img(im_noisy,noise_red,noise_blue,noise,noise_full2,global_step)
 
                 log_str = '[Epoch:{:>2d}/{:<2d}] : {:0>4d}/{:0>4d}, Loss={:.1e},Loss_dis={:.1e}, psnr_ori = {:.2e} , pnsr2={:.2e}, lr={:.1e}'
                 print(log_str.format(epoch + 1, epochs, ii + 1, N, mean_loss,mean_dis, psnr_ori , psnr2, lr))
@@ -233,7 +231,7 @@ def train(config):
                         im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
 
                         psnr2.extend(
-                            [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
+                            [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(im_gt.shape[0])])
                     print(' ,  psnr2={:.4e}  '.format(np.mean(psnr2)))
         # --------------------------------------------------------------
         ###############################################################
@@ -271,7 +269,7 @@ def train(config):
                     im_gt = np.transpose(im_gt.cpu().numpy(), [0, 2, 3, 1])
 
                     psnr2.extend(
-                        [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(batch_size)])
+                        [peak_signal_noise_ratio(restored_2[i], im_gt[i], data_range=1) for i in range(im_gt.shape[0])])
                 print('psnr={:.4e}  ,  psnr2={:.4e}  '.format(np.mean(psnr),np.mean(psnr2)))
         print('This epoch take time {:.2f}'.format(toc - tic))
 
